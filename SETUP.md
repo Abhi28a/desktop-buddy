@@ -7,7 +7,7 @@ This one file holds everything about Desktop Buddy: what it is, every feature, h
 | | |
 |---|---|
 | Product | Desktop Buddy: read-only desktop notifications for Google Workspace and Microsoft 365 |
-| Platforms | macOS (shipping, version **2.4**). Windows (planned, [§13](#13-windows-app-plan)) |
+| Platforms | macOS (shipping, version **2.4**). Windows (in development on `feature/windows-app`, [§13](#13-windows-app-plan)) |
 | Repository | `github.com/abhisheksaggam-design/desktop-buddy` (public) |
 | Owner | Dynamatix |
 | Latest release | `v2.4` on GitHub Releases (`Desktop-Buddy.dmg` + `Desktop-Buddy.dmg.sha256`) |
@@ -321,14 +321,27 @@ Highest priority first.
 | 4 | **Set up Report a Bug** | Create a Formspree form and put `feedbackFormID` (and `feedbackEmail`) in `team.json`. Until then it opens a Mail draft. |
 | 5 | **Google verification** (optional) | Needed only to go past 100 users with no warning. Restricted scopes (Gmail, Chat) need a paid yearly CASA security assessment. Meanwhile, client domains can mark the app Trusted. |
 | 6 | **Apple Developer ID + notarisation** (optional, $99/year) | Removes the first-time "Open Anyway" step. Sign and notarise with `SIGN_ID=…` and `notarytool` (README §9). |
-| 7 | **Windows app** | Planned in [§13](#13-windows-app-plan). Don't start until the owner says so. |
+| 7 | **Windows app** | Built on `feature/windows-app` ([§13](#13-windows-app-plan), `windows/README.md`). Still to do: a Desktop-type Google client in `team.json`, a live sign-in test, in-place updates, code signing. |
 | 8 | Ideas from earlier | "Check Services" diagnostic (granted scopes plus a probe of each API); keywords for chat text and meeting titles; `chat.memberships.readonly` to name DMs that have no messages yet; optional App Sandbox build. |
 
 ---
 
 ## 13. Windows app plan
 
-**Status: planned, not started.** Don't build until the owner says "start Windows". The `windows-builder` agent follows this plan.
+**Status: built, not released** (started 14 November 2026 on the owner's go-ahead). The code is in `windows/` on the `feature/windows-app` branch; how to build, run and release it is in `windows/README.md`. The `windows-builder` agent continues this work.
+
+**What's done:** every macOS 2.4 feature except in-place updates — sign-in first (Google and Microsoft), accounts, Clients and their health checks, mail filters and mute rules, the dock of logos, the top pop-up, the notification list with snooze and Undo, the tray flyout, quiet hours and pause, reminders, sounds, screen-share privacy, Team Setup, Report a Bug, the welcome tour and the update check. 335 unit tests (the port of `SelfTest.swift` plus sign-in and API parsing) and 8 Windows checks (`DesktopBuddy.exe --selftest`) pass.
+
+**Decisions made while reviewing this plan:**
+
+| Plan said | Built | Why |
+|---|---|---|
+| .NET 8 | **.NET 10** | .NET 8 support ended on 10 November 2026; .NET 10 is the current long-term release. |
+| Click-through transparent windows for the dock and pop-up | Compact **acrylic** panels; the pop-up is the same near-black card | WinUI 3 can't draw see-through windows without third-party code. Acrylic panels are the native Windows 11 look. |
+| Google: Desktop or UWP client (owner to choose) | **Desktop app** client with a loopback redirect and PKCE | UWP needs a Microsoft Store listing. The Desktop client's secret lives only in `team.json`, never in the repo. |
+| MSIX package or installer, signing optional | **Self-contained zip** for now | An unsigned MSIX can't be installed at all. The zip needs no installer and runs as is. |
+| Keychain → Credential Manager or DPAPI | **Credential Manager**, long values split across entries | Credential Manager caps a value at 2,560 bytes and Microsoft refresh tokens can be longer. |
+| Update check | Check and download link; **install in place still to do** | The Mac's swap-and-relaunch depends on its signature check, which needs a Windows signing certificate first. |
 
 ### Goal
 The same product on Windows 10/11: the same features, rules, privacy promises and sign-in-first flow as macOS 2.4, designed natively for Windows 11 (Fluent).

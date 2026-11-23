@@ -1,0 +1,55 @@
+<!--
+  One token on the Rail: a focusable button around the client token (DESIGN.md section 4).
+  The button draws nothing itself: the hover wash is ours (HotBack), because a window that isn't
+  active doesn't get pointer-over events, so RailWindow tells us when the cursor is on a token.
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Views.Rail.RailTokenButton"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:DesktopBuddy.App.Ui.Components"
+    IsTabStop="False">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+        <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+    </UserControl.Resources>
+    <Button
+        x:Name="Hit"
+        Padding="0"
+        BorderThickness="0"
+        CornerRadius="0"
+        FocusVisualMargin="-6"
+        MinWidth="0"
+        MinHeight="0"
+        HorizontalAlignment="Center"
+        HorizontalContentAlignment="Center"
+        Click="OnClick"
+        GotFocus="OnGotFocus"
+        LostFocus="OnLostFocus">
+        <Grid>
+            <Border
+                x:Name="HotBack"
+                Background="{ThemeResource DbSurfaceHoverBrush}"
+                Opacity="0"
+                Margin="-4" />
+            <StackPanel x:Name="Stack" Spacing="4" HorizontalAlignment="Center">
+                <c:TokenView x:Name="Token" HorizontalAlignment="Center" AutomationProperties.AccessibilityView="Raw" />
+                <TextBlock
+                    x:Name="NameText"
+                    Style="{StaticResource DbCaptionStyle}"
+                    Foreground="{ThemeResource DbTextPrimaryBrush}"
+                    HorizontalAlignment="Center"
+                    TextAlignment="Center"
+                    TextWrapping="NoWrap"
+                    TextTrimming="CharacterEllipsis"
+                    Visibility="Collapsed" />
+            </StackPanel>
+        </Grid>
+    </Button>
+</UserControl>

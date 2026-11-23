@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DesktopBuddy.App/DesktopBuddy.App.csproj">
+      <Platform Project="x64" />
+    </Project>
+    <Project Path="src/DesktopBuddy.Core/DesktopBuddy.Core.csproj" />
+    <Project Path="src/DesktopBuddy.Presentation/DesktopBuddy.Presentation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DesktopBuddy.Tests/DesktopBuddy.Tests.csproj" />
+  </Folder>
+</Solution>

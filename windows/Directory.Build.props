@@ -1,0 +1,14 @@
+<Project>
+  <!-- Shared settings for every Desktop Buddy Windows project. -->
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- Keep in step with CFBundleShortVersionString in ../build-app.sh -->
+    <Version>2.4.0</Version>
+    <Company>Dynamatix</Company>
+    <Product>Desktop Buddy</Product>
+    <Copyright>Dynamatix</Copyright>
+  </PropertyGroup>
+</Project>

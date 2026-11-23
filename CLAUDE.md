@@ -11,4 +11,4 @@ Key rules (details in SETUP.md §11):
 - GitHub: `GH_TOKEN=$(gh auth token -u abhisheksaggam-design)`; never switch the default `gh` account.
 - Never commit `team.json`, the signing certificate or passwords. The repo is public: no personal emails or colleagues' names, including in screenshots and tests.
 - Releases: bump the version in `build-app.sh`, run `./build-app.sh --share` (signed with "Desktop Buddy Signing"), and attach `Desktop-Buddy.dmg` and `Desktop-Buddy.dmg.sha256` to a `vX.Y` GitHub release.
-- Windows app: planned only (SETUP.md §13). Don't start until the owner says so.
+- Windows app: in development on `feature/windows-app` (SETUP.md §13, `windows/README.md`). Build and test with `windows/build-windows.ps1`; check screens with `DesktopBuddy.exe --snapshot <folder>`.

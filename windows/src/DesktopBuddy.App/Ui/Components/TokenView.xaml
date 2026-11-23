@@ -1,0 +1,57 @@
+<!--
+  The client token — Desktop Buddy's signature (windows/DESIGN.md §Token).
+  A client's logo on a round white pad with a soft ring in the client's colour. The waiting
+  count sits in a NOTCH cut into the ring (a border in the surrounding surface colour), like the
+  slit in a lily pad. An optional ring around the pad counts down to a meeting.
+  The same token is used on the Rail, the Peek, the Board and Settings.
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Ui.Components.TokenView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+    <Grid x:Name="Root">
+        <Ellipse
+            x:Name="UrgencyRing"
+            Stroke="{ThemeResource DbUrgentBrush}"
+            StrokeThickness="2"
+            StrokeDashCap="Round"
+            Visibility="Collapsed"
+            RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <RotateTransform Angle="-90" />
+            </Ellipse.RenderTransform>
+        </Ellipse>
+        <Border x:Name="Pad" Background="{ThemeResource DbPadBrush}" />
+        <Border x:Name="ReminderPad" Background="{ThemeResource DbAccentBrush}" Visibility="Collapsed" />
+        <Image x:Name="LogoImage" Stretch="Uniform" />
+        <TextBlock
+            x:Name="MonogramText"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            FontWeight="SemiBold"
+            Visibility="Collapsed" />
+        <FontIcon
+            x:Name="BellIcon"
+            FontFamily="{ThemeResource SymbolThemeFontFamily}"
+            Glyph="&#xEA8F;"
+            Foreground="{ThemeResource DbTextOnAccentBrush}"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            Visibility="Collapsed" />
+        <Border
+            x:Name="Notch"
+            Background="{ThemeResource DbWaitingBrush}"
+            BorderBrush="{ThemeResource DbSurfaceBaseBrush}"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Visibility="Collapsed">
+            <TextBlock
+                x:Name="CountText"
+                Foreground="{ThemeResource DbTextOnWaitingBrush}"
+                FontWeight="SemiBold"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center" />
+        </Border>
+    </Grid>
+</UserControl>

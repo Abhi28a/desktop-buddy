@@ -1,0 +1,14 @@
+<!--
+  One of the six places the Rail can go, shown while it is dragged. The window is cut to a thin ring
+  (see FloatingWindow), so this just fills it: the strong stroke colour, or the accent for the nearest place.
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Views.Rail.RailZone"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+    <Grid>
+        <Border x:Name="Idle" Background="{ThemeResource DbStrokeStrongBrush}" />
+        <Border x:Name="Lit" Visibility="Collapsed" Background="{ThemeResource DbAccentBrush}" />
+    </Grid>
+</UserControl>

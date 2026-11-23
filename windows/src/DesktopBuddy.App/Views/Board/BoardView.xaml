@@ -1,0 +1,430 @@
+<!--
+  The Board's content: one triage panel (windows/DESIGN.md §6). Header, one problem line, a
+  virtualised list grouped by owner, an Undo bar, and keycap hints. The window shell (BoardWindow)
+  and the snapshots both host this same control.
+  All colours are tokens; all type is a Db…Style; every interactive control has an AutomationId.
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Views.Board.BoardView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:comp="using:DesktopBuddy.App.Ui.Components"
+    xmlns:local="using:DesktopBuddy.App.Views.Board"
+    xmlns:vm="using:DesktopBuddy.Presentation.Board"
+    IsTabStop="False">
+
+    <UserControl.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <!-- Rows: our own wash for hover and selection; the selection bar is drawn in the row
+                     template (inside its padding), so the built-in indicator is switched off. -->
+                <ResourceDictionary x:Key="Light">
+                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="DbSurfaceHoverBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="DbSurfaceHoverBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="DbSurfaceSelectedBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="DbSurfaceSelectedBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="DbSurfaceSelectedBrush" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewHeaderItemDividerStroke" Color="Transparent" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="DbSurfaceHoverBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="DbSurfaceHoverBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="DbSurfaceSelectedBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="DbSurfaceSelectedBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="DbSurfaceSelectedBrush" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewHeaderItemDividerStroke" Color="Transparent" />
+                </ResourceDictionary>
+                <!-- High Contrast: no fill behind selected text (its colour can't flip), the accent bar
+                     and the system focus visual mark the row instead. -->
+                <ResourceDictionary x:Key="HighContrast">
+                    <StaticResource x:Key="ListViewItemBackgroundPointerOver" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundPressed" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelected" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPointerOver" ResourceKey="SystemColorWindowColorBrush" />
+                    <StaticResource x:Key="ListViewItemBackgroundSelectedPressed" ResourceKey="SystemColorWindowColorBrush" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+                    <SolidColorBrush x:Key="ListViewHeaderItemDividerStroke" Color="Transparent" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+            <x:Double x:Key="ListViewHeaderItemMinHeight">0</x:Double>
+
+            <!-- A row: no box of its own. Margin 6 + inner padding 12 puts the content 18 from the edge. -->
+            <Style x:Key="BoardRowContainerStyle" TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Margin" Value="6,0,6,1" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                <Setter Property="CornerRadius" Value="{StaticResource DbRadiusRow}" />
+            </Style>
+
+            <!-- A group header is opaque so rows scroll cleanly under it when it sticks to the top. -->
+            <Style x:Key="BoardGroupContainerStyle" TargetType="ListViewHeaderItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="IsTabStop" Value="False" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="VerticalContentAlignment" Value="Stretch" />
+                <Setter Property="Background" Value="{ThemeResource DbSurfaceBaseBrush}" />
+            </Style>
+
+            <DataTemplate x:Key="BoardGroupTemplate" x:DataType="vm:BoardGroup">
+                <Grid
+                    Padding="{x:Bind local:BoardView.HeaderPadding(IsFirst)}"
+                    Background="Transparent"
+                    ColumnSpacing="6"
+                    PointerEntered="OnHeaderPointerEntered"
+                    PointerExited="OnHeaderPointerExited"
+                    Visibility="{x:Bind ShowHeader}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <comp:TokenView
+                        Size="24"
+                        VerticalAlignment="Center"
+                        Logo="{x:Bind Logo}"
+                        OwnerName="{x:Bind Name}"
+                        Tint="{x:Bind Tint}"
+                        IsReminders="{x:Bind IsReminders}" />
+                    <TextBlock
+                        Grid.Column="1"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource DbRowTitleStyle}"
+                        Text="{x:Bind Name}" />
+                    <TextBlock
+                        Grid.Column="2"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource DbCaptionStyle}"
+                        Text="{x:Bind Count}"
+                        Typography.NumeralAlignment="Tabular" />
+                    <Button
+                        Grid.Column="3"
+                        Padding="8,2,8,3"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="{x:Bind ClearAutomationId}"
+                        GotFocus="OnClearGotFocus"
+                        LostFocus="OnClearLostFocus"
+                        Opacity="0"
+                        AutomationProperties.Name="{x:Bind ClearName}"
+                        Click="OnClearGroup"
+                        Tag="{x:Bind}"
+                        Style="{StaticResource DbQuietButtonStyle}"
+                        ToolTipService.ToolTip="{x:Bind ClearName}">
+                        <TextBlock Style="{StaticResource DbCaptionStyle}" Text="Clear" />
+                    </Button>
+                </Grid>
+            </DataTemplate>
+
+            <DataTemplate x:Key="BoardRowTemplate" x:DataType="vm:BoardRow">
+                <Grid
+                    Background="Transparent"
+                    PointerEntered="OnRowPointerEntered"
+                    PointerExited="OnRowPointerExited">
+                    <!-- The selection bar sits in the row's left padding, so it never covers the icon. -->
+                    <Border
+                        Width="3"
+                        Margin="4,6,0,6"
+                        HorizontalAlignment="Left"
+                        Background="{ThemeResource DbAccentBrush}"
+                        CornerRadius="2"
+                        Visibility="{x:Bind IsSelected, Mode=OneWay}" />
+                    <Grid Padding="12,7,10,8" ColumnSpacing="10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="20" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" MinWidth="68" />
+                        </Grid.ColumnDefinitions>
+                        <!-- The source glyph, in its theme-aware service colour (DbSource…Brush). -->
+                        <Grid Margin="0,3,0,0" VerticalAlignment="Top">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Foreground="{ThemeResource DbSourceMailBrush}" Glyph="{x:Bind Glyph}" Visibility="{x:Bind IsMail}" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Foreground="{ThemeResource DbSourceChatBrush}" Glyph="{x:Bind Glyph}" Visibility="{x:Bind IsChat}" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Foreground="{ThemeResource DbSourceMeetingBrush}" Glyph="{x:Bind Glyph}" Visibility="{x:Bind IsMeeting}" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Foreground="{ThemeResource DbSourceTaskBrush}" Glyph="{x:Bind Glyph}" Visibility="{x:Bind IsTask}" />
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Foreground="{ThemeResource DbSourceReminderBrush}" Glyph="{x:Bind Glyph}" Visibility="{x:Bind IsReminder}" />
+                        </Grid>
+                        <StackPanel Grid.Column="1" Spacing="1">
+                            <TextBlock Style="{StaticResource DbRowTitleStyle}" Text="{x:Bind Sender}" />
+                            <TextBlock
+                                Style="{StaticResource DbSecondaryStyle}"
+                                Text="{x:Bind Secondary}"
+                                TextWrapping="NoWrap" />
+                        </StackPanel>
+                        <Grid Grid.Column="2">
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Style="{StaticResource DbCaptionStyle}"
+                                Text="{x:Bind TimeText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular"
+                                Visibility="{x:Bind ShowNormalTime, Mode=OneWay}" />
+                            <TextBlock
+                                Margin="0,2,0,0"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource DbUrgentBrush}"
+                                Style="{StaticResource DbCaptionStyle}"
+                                Text="{x:Bind TimeText, Mode=OneWay}"
+                                Typography.NumeralAlignment="Tabular"
+                                Visibility="{x:Bind ShowUrgentTime, Mode=OneWay}" />
+                            <StackPanel
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Orientation="Horizontal"
+                                Spacing="2"
+                                Visibility="{x:Bind ShowActions, Mode=OneWay}">
+                                <Button
+                                    AutomationProperties.AutomationId="{x:Bind LaterAutomationId}"
+                                    AutomationProperties.Name="Later"
+                                    Click="OnLaterClick"
+                                    Tag="{x:Bind}"
+                                    Style="{StaticResource DbIconButtonStyle}"
+                                    ToolTipService.ToolTip="Later (S)">
+                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Glyph="&#xE121;" />
+                                </Button>
+                                <Button
+                                    AutomationProperties.AutomationId="{x:Bind DoneAutomationId}"
+                                    AutomationProperties.Name="Done"
+                                    Click="OnDoneClick"
+                                    Tag="{x:Bind}"
+                                    Style="{StaticResource DbIconButtonStyle}"
+                                    ToolTipService.ToolTip="Done (E)">
+                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Glyph="&#xE73E;" />
+                                </Button>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Grid>
+            </DataTemplate>
+        </ResourceDictionary>
+    </UserControl.Resources>
+
+    <Border
+        x:Name="Shell"
+        Width="404"
+        MaxHeight="560"
+        HorizontalAlignment="Left"
+        VerticalAlignment="Top"
+        AutomationProperties.AutomationId="BoardPanel"
+        AutomationProperties.Name="Waiting"
+        Style="{StaticResource DbPanelStyle}">
+        <Grid x:Name="Layout">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <!-- Header: title (or the owner when filtered), the coral count, Clear all, Settings. -->
+            <Grid Padding="18,16,10,10" ColumnSpacing="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel
+                    VerticalAlignment="Center"
+                    Orientation="Horizontal"
+                    Spacing="10">
+                    <comp:TokenView
+                        Size="24"
+                        VerticalAlignment="Center"
+                        Logo="{x:Bind Vm.FilterLogo, Mode=OneWay}"
+                        OwnerName="{x:Bind Vm.FilterName, Mode=OneWay}"
+                        Tint="{x:Bind Vm.FilterTint, Mode=OneWay}"
+                        IsReminders="{x:Bind Vm.FilterIsReminders, Mode=OneWay}"
+                        Visibility="{x:Bind Vm.IsFiltered, Mode=OneWay}" />
+                    <TextBlock
+                        MaxWidth="170"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource DbPanelTitleStyle}"
+                        Text="{x:Bind Vm.Title, Mode=OneWay}"
+                        TextTrimming="CharacterEllipsis"
+                        ToolTipService.ToolTip="{x:Bind Vm.Title, Mode=OneWay}" />
+                    <Border
+                        Padding="8,1,8,2"
+                        VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="BoardCount"
+                        Background="{ThemeResource DbWaitingBrush}"
+                        CornerRadius="10"
+                        Visibility="{x:Bind Vm.HasRows, Mode=OneWay}">
+                        <TextBlock
+                            FontWeight="SemiBold"
+                            Foreground="{ThemeResource DbTextOnWaitingBrush}"
+                            Style="{StaticResource DbCaptionStyle}"
+                            Text="{x:Bind Vm.TotalCount, Mode=OneWay}"
+                            Typography.NumeralAlignment="Tabular" />
+                    </Border>
+                </StackPanel>
+                <Button
+                    x:Name="ClearAllButton"
+                    Grid.Column="1"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BoardClearAll"
+                    Click="OnClearAll"
+                    Style="{StaticResource DbQuietButtonStyle}"
+                    Visibility="{x:Bind Vm.HasRows, Mode=OneWay}">
+                    <TextBlock Style="{StaticResource DbBodyStyle}" Foreground="{ThemeResource DbTextSecondaryBrush}" Text="Clear all" />
+                </Button>
+                <Button
+                    Grid.Column="2"
+                    VerticalAlignment="Center"
+                    AutomationProperties.AutomationId="BoardSettings"
+                    AutomationProperties.Name="Settings"
+                    Click="OnSettings"
+                    Style="{StaticResource DbIconButtonStyle}"
+                    ToolTipService.ToolTip="Settings">
+                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" FontSize="14" Glyph="&#xE713;" />
+                </Button>
+            </Grid>
+
+            <!-- Filtered to one owner: the way back to everything. -->
+            <Button
+                Grid.Row="1"
+                Margin="12,-6,12,6"
+                Padding="6,2,8,3"
+                HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="BoardShowAll"
+                Click="OnShowAll"
+                Style="{StaticResource DbQuietButtonStyle}"
+                Visibility="{x:Bind Vm.IsFiltered, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <FontIcon
+                        VerticalAlignment="Center"
+                        FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                        FontSize="10"
+                        Foreground="{ThemeResource DbAccentBrush}"
+                        Glyph="&#xE76B;" />
+                    <TextBlock Foreground="{ThemeResource DbAccentBrush}" Style="{StaticResource DbBodyStyle}" Text="Show everything" />
+                </StackPanel>
+            </Button>
+
+            <!-- One line when something's wrong (or paused). Set up in code (StatusLine takes an Action). -->
+            <comp:StatusLine
+                x:Name="ProblemLine"
+                Grid.Row="2"
+                Margin="14,0,14,8"
+                Visibility="Collapsed" />
+
+            <ListView
+                x:Name="List"
+                Grid.Row="3"
+                Padding="0,0,0,6"
+                AutomationProperties.AutomationId="BoardList"
+                AutomationProperties.Name="Waiting items"
+                ContainerContentChanging="OnContainerContentChanging"
+                IsItemClickEnabled="True"
+                ItemClick="OnItemClick"
+                ItemContainerStyle="{StaticResource BoardRowContainerStyle}"
+                ItemTemplate="{StaticResource BoardRowTemplate}"
+                SelectionChanged="OnSelectionChanged"
+                SelectionMode="Single"
+                Visibility="{x:Bind Vm.HasRows, Mode=OneWay}">
+                <!-- No sliding rows: only fades are allowed. -->
+                <ListView.ItemContainerTransitions>
+                    <TransitionCollection />
+                </ListView.ItemContainerTransitions>
+                <ListView.GroupStyle>
+                    <GroupStyle
+                        HeaderContainerStyle="{StaticResource BoardGroupContainerStyle}"
+                        HeaderTemplate="{StaticResource BoardGroupTemplate}"
+                        HidesIfEmpty="True" />
+                </ListView.GroupStyle>
+            </ListView>
+
+            <!-- Nothing waiting: quiet, no illustration. -->
+            <StackPanel
+                Grid.Row="3"
+                Padding="24,36,24,44"
+                HorizontalAlignment="Center"
+                AutomationProperties.AutomationId="BoardEmpty"
+                Spacing="4"
+                Visibility="{x:Bind Vm.IsEmpty, Mode=OneWay}">
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource DbRowTitleStyle}"
+                    Text="Nothing waiting" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource DbCaptionStyle}"
+                    Text="{x:Bind Vm.EmptyDetail, Mode=OneWay}"
+                    TextAlignment="Center"
+                    TextWrapping="Wrap" />
+            </StackPanel>
+
+            <!-- Undo, for 6 seconds after Done or Clear. -->
+            <Grid
+                Grid.Row="4"
+                Margin="12,0,12,8"
+                Padding="14,3,4,3"
+                Background="{ThemeResource DbSurfaceSunkenBrush}"
+                CornerRadius="{StaticResource DbRadiusRow}"
+                Visibility="{x:Bind Vm.HasUndo, Mode=OneWay}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    VerticalAlignment="Center"
+                    Style="{StaticResource DbBodyStyle}"
+                    Text="{x:Bind Vm.UndoLabel, Mode=OneWay}" />
+                <Button
+                    Grid.Column="1"
+                    AutomationProperties.AutomationId="BoardUndo"
+                    Click="OnUndo"
+                    Style="{StaticResource DbQuietButtonStyle}"
+                    ToolTipService.ToolTip="Undo (Ctrl+Z)">
+                    <TextBlock
+                        FontWeight="SemiBold"
+                        Foreground="{ThemeResource DbAccentBrush}"
+                        Style="{StaticResource DbBodyStyle}"
+                        Text="Undo" />
+                </Button>
+            </Grid>
+
+            <!-- Keyboard hints. Decorative: the labels say what each key does. -->
+            <Border
+                Grid.Row="5"
+                Padding="18,10,14,12"
+                BorderBrush="{ThemeResource DbStrokeSubtleBrush}"
+                BorderThickness="0,1,0,0"
+                Visibility="{x:Bind Vm.HasRows, Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <comp:Keycap AutomationProperties.AccessibilityView="Raw" Key="↑↓" />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource DbCaptionStyle}" Text="Move" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <comp:Keycap AutomationProperties.AccessibilityView="Raw" Key="Enter" />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource DbCaptionStyle}" Text="Open" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <comp:Keycap AutomationProperties.AccessibilityView="Raw" Key="E" />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource DbCaptionStyle}" Text="Done" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <comp:Keycap AutomationProperties.AccessibilityView="Raw" Key="S" />
+                        <TextBlock VerticalAlignment="Center" Style="{StaticResource DbCaptionStyle}" Text="Later" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+</UserControl>

@@ -1,0 +1,138 @@
+<!--
+  The Peek (DESIGN.md section 6): one new item on an inverse card (ink in light, paper in dark).
+  Pure content, no window, so the snapshot screens can draw it. A 2 px accent time line runs down the bottom edge.
+  The secondary pills are drawn on the inverse colour by giving them the OPPOSITE theme of the card
+  (RequestedTheme is set in code), so their text, border and hover wash all come out right.
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Views.Peek.PeekContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:c="using:DesktopBuddy.App.Ui.Components"
+    IsTabStop="False">
+    <Grid x:Name="Frame">
+        <Grid x:Name="Shell" Width="400">
+            <Border
+                x:Name="Card"
+                Background="{ThemeResource DbSurfaceInverseBrush}"
+                BorderBrush="{ThemeResource DbStrokeOnInverseBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource DbRadiusPanel}"
+                AutomationProperties.AutomationId="Peek"
+                AutomationProperties.Name="New notification">
+                <Grid Padding="14,14,14,14" ColumnSpacing="12" RowSpacing="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <c:TokenView
+                        x:Name="Token"
+                        Size="44"
+                        CutBrush="{ThemeResource DbSurfaceInverseBrush}"
+                        VerticalAlignment="Top"
+                        AutomationProperties.AccessibilityView="Raw" />
+
+                    <StackPanel Grid.Column="1" Spacing="1" MinWidth="0">
+                        <Grid ColumnSpacing="12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                x:Name="MetaText"
+                                Style="{StaticResource DbCaptionStyle}"
+                                Foreground="{ThemeResource DbTextOnInverseSecondaryBrush}" />
+                            <TextBlock
+                                x:Name="TimeText"
+                                Grid.Column="1"
+                                Style="{StaticResource DbCaptionStyle}"
+                                Foreground="{ThemeResource DbTextOnInverseSecondaryBrush}"
+                                TextTrimming="None" />
+                        </Grid>
+                        <TextBlock
+                            x:Name="SenderText"
+                            Style="{StaticResource DbPanelTitleStyle}"
+                            Foreground="{ThemeResource DbTextOnInverseBrush}"
+                            TextWrapping="NoWrap"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            x:Name="SubjectText"
+                            Style="{StaticResource DbBodyStyle}"
+                            Foreground="{ThemeResource DbTextOnInverseBrush}"
+                            TextWrapping="NoWrap"
+                            TextTrimming="CharacterEllipsis" />
+                        <TextBlock
+                            x:Name="DetailText"
+                            Style="{StaticResource DbSecondaryStyle}"
+                            Foreground="{ThemeResource DbTextOnInverseSecondaryBrush}"
+                            TextWrapping="NoWrap" />
+                    </StackPanel>
+
+                    <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnSpacing="8" Margin="0,2,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel x:Name="Actions" Orientation="Horizontal" Spacing="8">
+                            <Button
+                                x:Name="OpenButton"
+                                Content="Open"
+                                Style="{StaticResource DbPrimaryButtonStyle}"
+                                AutomationProperties.AutomationId="PeekOpen"
+                                Click="OnOpen" />
+                            <Button
+                                x:Name="DoneButton"
+                                Content="Done"
+                                Style="{StaticResource DbSecondaryButtonStyle}"
+                                AutomationProperties.AutomationId="PeekDone"
+                                Click="OnDone" />
+                            <Button
+                                x:Name="LaterButton"
+                                Content="Later"
+                                Style="{StaticResource DbSecondaryButtonStyle}"
+                                AutomationProperties.AutomationId="PeekLater"
+                                AutomationProperties.HelpText="Comes back in an hour"
+                                Click="OnLater" />
+                        </StackPanel>
+                        <StackPanel x:Name="MoreHost" Grid.Column="2" VerticalAlignment="Center">
+                            <Button
+                                x:Name="MoreButton"
+                                Style="{StaticResource DbQuietButtonStyle}"
+                                AutomationProperties.AutomationId="PeekMore"
+                                Click="OnMore">
+                                <TextBlock x:Name="MoreText" Style="{StaticResource DbCaptionStyle}" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- The time left: a hairline along the bottom edge, never a spinner. -->
+                    <Border
+                        Grid.ColumnSpan="2"
+                        Grid.RowSpan="2"
+                        Height="2"
+                        VerticalAlignment="Bottom"
+                        Margin="0,0,0,-14"
+                        IsHitTestVisible="False"
+                        AutomationProperties.AccessibilityView="Raw">
+                        <Border
+                            x:Name="TimeLine"
+                            HorizontalAlignment="Stretch"
+                            CornerRadius="1"
+                            Background="{ThemeResource DbAccentBrush}"
+                            RenderTransformOrigin="0,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform x:Name="TimeScale" ScaleX="1" />
+                            </Border.RenderTransform>
+                        </Border>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

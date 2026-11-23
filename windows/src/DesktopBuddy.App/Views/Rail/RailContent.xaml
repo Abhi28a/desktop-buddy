@@ -1,0 +1,21 @@
+<!--
+  The Rail: a floating pill of client tokens (DESIGN.md section 6). Pure content (no window), so
+  the snapshot screens can draw it. The pill is on DbSurfaceBaseBrush (the window cuts itself to the pill shape; see FloatingWindow).
+-->
+<UserControl
+    x:Class="DesktopBuddy.App.Views.Rail.RailContent"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    IsTabStop="False">
+    <Grid x:Name="Frame">
+        <Grid x:Name="Shell">
+            <Border
+                x:Name="Pill"
+                Style="{StaticResource DbPanelStyle}"
+                AutomationProperties.AutomationId="Rail"
+                AutomationProperties.Name="Waiting by client">
+                <StackPanel x:Name="Tokens" Spacing="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

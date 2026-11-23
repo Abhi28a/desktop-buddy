@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- View models and UI logic with no WinUI in it, so it's unit-tested with xUnit like Core.
+       Folders: Board, Rail, Peek, Settings (one per surface) and Shortcuts (global shortcut parsing).
+       The only package is CommunityToolkit.Mvvm (.NET Foundation, approved by the owner). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>DesktopBuddy.Presentation</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\DesktopBuddy.Core\DesktopBuddy.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="DesktopBuddy.Tests" />
+  </ItemGroup>
+</Project>
