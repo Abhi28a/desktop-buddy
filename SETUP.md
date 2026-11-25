@@ -69,8 +69,8 @@ It's built for people who work across several workspaces (Dynamatix, IE Hub and 
 
 ### Notifications on screen
 - **Dock of logos:** one logo per client or account, plus reminders, each with a red count badge. The dock can sit in a corner, along the bottom, or up a side. Drag it from any place to any other: the place nearest the pointer wins. Logos keep their place when new items arrive; new logos join on the left and fade in.
-- **Menu bar pop-up ("island"):** a small black island drops from the top centre with who the item is from and what it says, then tucks away after 10 seconds. Hovering pauses it, clicking opens the item, and **View more** opens the list.
-- **Notification list,** styled like Notification Center: grouped by client or account, with a filter bar of logos, Clear per group, and Clear All. Hovering a card gives ✕ (done) and a snooze menu (10 minutes, 1 hour, tomorrow 9 am). Right-click gives more options. **Esc** closes the list.
+- **Menu bar pop-up ("island"):** a small black island drops from the top centre with who the item is from and what it says, with **Open** and **Done** buttons always showing, then tucks away after 10 seconds. Hovering pauses it and shows ✕ to hide it, clicking opens the item, and **View more** opens the list.
+- **Notification list:** notifications grouped under each account or client (big logo, name, a count in the account's colour, and Clear), newest first. A coloured edge ties each notification to its account, and a round Mail, Chat, Meeting, Task or Reminder icon shows what it is. A round filter button picks one kind; Clear All clears what's showing. Clicking a dock logo shows just that account, with a back arrow to see every account. Hovering a notification shows Open and Done; right-click gives more. **Esc** closes the list.
 - **Undo** for 6 seconds after Clear All, Clear or Done, using the button or ⌘Z.
 - **Menu bar dropdown:**
   - the Desktop Buddy mark with a count
@@ -81,6 +81,7 @@ It's built for people who work across several workspaces (Dynamatix, IE Hub and 
 - **Screen-share privacy:** "Hide from Screen Sharing" keeps the logos and pop-up out of screen shares. macOS uses the same switch for screenshots, so "Allow Screenshots for 1 Minute" turns it off briefly.
 - **Sounds:** a different sound per notification type, with a preview button.
 - **Quiet hours and Pause:** nothing pops up while they're on; items wait in the list.
+- **Accessibility:** with Reduce Transparency or Increase Contrast on, the dock and the list switch from glass to a solid dark surface. Grey text on dark surfaces is at least 74% white (over 4.5:1 even above a white window). VoiceOver reads each notification as one sentence ("Gmail from Jane: Contract ready. … Dynamatix, 4 minutes ago"), new arrivals are announced, and the menu bar pop-up stays open until closed while VoiceOver is on. Reminders don't show a second bell badge.
 - **Logo names** update as soon as an account or client is renamed.
 
 ### Mail filters and muting (per account)
@@ -171,11 +172,13 @@ Every change must keep these true, or the technical spec and README must say exa
 3. Put `team.json` in the project folder. It's git-ignored; get it from the owner, or make it as in [§7](#7-google-microsoft-and-teamjson-setup).
 4. Import the signing certificate so releases are signed with the team identity (password in `p12-password.txt`):
    `security import signing.p12 -k ~/Library/Keychains/login.keychain-db -T /usr/bin/codesign`
-5. Run `./build-app.sh --install`. It builds, runs the self-test, installs to /Applications and opens the app.
+5. Install Xcode (for live previews and Liquid Glass), then run `./build-app.sh --install`. It builds, runs the self-test, installs to /Applications and opens the app.
 6. **The DMG design tool** (`dmgbuild`) is set up automatically in `.tools/` the first time you run `./build-app.sh --share`. That needs internet once.
 7. **Website:** run `npm --prefix site install` once, then `npm --prefix site run dev` (port 3100). `.claude/launch.json` has a "site" preview entry.
 
-**Known toolchain quirk:** on this macOS SDK, SwiftUI's `@State` macro plugin is missing. The code uses a custom `@Local` property wrapper (`LocalState.swift`) instead. Don't use `@State`.
+**Known toolchain quirk:** with only the Command Line Tools, SwiftUI's `@State` macro plugin is missing, so the code uses a custom `@Local` property wrapper (`LocalState.swift`). Full Xcode is now installed and `@State` works there, but keep using `@Local` so the code builds either way.
+
+**Live previews in Xcode:** open the project folder in Xcode (`xed .`), choose the **DesktopBuddyKit** scheme, open `Sources/DesktopBuddy/Previews.swift` and press ⌥⌘↩ to show the canvas. Previews use made-up sample accounts in a temporary folder, never your real settings or sign-ins. There are also previews over a plain white background and with Reduce Transparency, the hardest cases for the glass. The code is a library (`DesktopBuddyKit`) and the program is in `App/` because Xcode can't preview inside a program target.
 
 ---
 
@@ -285,7 +288,7 @@ These are how the work has been done so far. Keep doing it this way.
 
 **Testing:**
 - Every logic change gets self-test checks in `SelfTest.swift`. `./build-app.sh` must pass.
-- Test what you build before reporting, using `--snapshot <dir>` to render screens offscreen.
+- Test what you build before reporting: Xcode live previews (§6), or `DESKTOPBUDDY_HOME=$(mktemp -d) "dist/Desktop Buddy.app/Contents/MacOS/DesktopBuddyV2" --snapshot <dir>` to render screens offscreen with sample data. Offscreen renders can't show glass or blur; previews can.
 - Say plainly what you couldn't test.
 
 **Ask first** before anything outward-facing:
@@ -402,9 +405,13 @@ The same product on Windows 10/11: the same features, rules, privacy promises an
 
 | Path | What it is |
 |---|---|
-| `Sources/DesktopBuddy/` | The Mac app (Swift). Start with `App.swift`, `AppState.swift` and `Models.swift`. |
+| `Sources/DesktopBuddy/` | The Mac app's code and screens (the `DesktopBuddyKit` library). Start with `App.swift`, `AppState.swift` and `Models.swift`. |
+| `Sources/DesktopBuddy/Logos/` | Built-in logos (Dynamatix, IE Hub, RiskHawk, Gatehouse) |
+| `Sources/DesktopBuddy/Previews.swift` | Xcode live previews with sample data |
+| `Sources/DesktopBuddy/Look.swift` | On-screen surfaces (glass, frosted or solid), text contrast on dark surfaces, and what VoiceOver says for each notification |
+| `App/` | The program itself: one line that starts the app. `build-app.sh` builds it. |
 | `Sources/DesktopBuddy/SelfTest.swift` | The built-in tests (`--selftest`) |
-| `Resources/` | App icon (`AppIcon.icns`) and built-in logos |
+| `Resources/` | App icon (`AppIcon.icns`) |
 | `build-app.sh` | Build, test, sign, install, package (DMG and checksum) |
 | `dmg/` | DMG install window: background generator, background images, layout |
 | `docs/` | Screenshots (sample data), `signing.md` |

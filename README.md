@@ -321,7 +321,7 @@ xcrun stapler staple "dist/Desktop Buddy.dmg"
 | `…/SettingsWindow.swift`, `Overlay.swift`, `MenuBarPopover.swift` | Interface |
 | `…/Updates.swift` | Daily check for a newer GitHub release |
 | `…/SelfTest.swift` | Built-in scenario tests (`--selftest`) |
-| `Resources/` | App icon and bundled logos |
+| `Resources/` | App icon |
 | `dmg/` | The designed DMG install window (background generator and layout) |
 | `site/` | The website (Next.js) |
 | `docs/` | Screenshots |

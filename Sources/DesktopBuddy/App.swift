@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import Combine
 
-@main
-enum Main {
-    static func main() {
+/// Starts Desktop Buddy. The app's code lives in the DesktopBuddyKit library so Xcode can show
+/// live previews; the tiny DesktopBuddyV2 program (Sources/DesktopBuddyApp) just calls this.
+public enum DesktopBuddyLauncher {
+    @MainActor public static func main() {
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             MainActor.assumeIsolated { Snapshot.run(to: CommandLine.arguments[i + 1]) }
             return
@@ -92,6 +93,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             DistributedNotificationCenter.default().addObserver(forName: Notification.Name("DesktopBuddy.test.status"),
                                                                 object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { GlimpseController.shared.printStatus(); DockController.shared.printStatus() }
+            }
+            // "DesktopBuddy.test.open" (object: an owner, or "first") opens that logo's list, like a click.
+            DistributedNotificationCenter.default().addObserver(forName: Notification.Name("DesktopBuddy.test.open"),
+                                                                object: nil, queue: .main) { note in
+                let owner = note.object as? String
+                MainActor.assumeIsolated {
+                    let state = AppState.shared
+                    let pick = state.activeOwners.contains(owner ?? "") ? owner : state.activeOwners.first
+                    if let pick { state.filterOwner = pick; state.expanded = true }
+                }
             }
             DistributedNotificationCenter.default().addObserver(forName: Notification.Name("DesktopBuddy.test.send"),
                                                                 object: nil, queue: .main) { note in

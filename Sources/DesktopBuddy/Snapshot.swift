@@ -5,13 +5,23 @@ import AppKit
 /// (for docs and design review) and exits. Uses real AppKit windows rendered offscreen.
 @MainActor
 enum Snapshot {
+    /// Snapshots change settings and the inbox to stage each screen, so they only run against a
+    /// throwaway data folder, never the person's real one.
+    static func allowed(environment: [String: String]) -> Bool {
+        !(environment["DESKTOPBUDDY_HOME"] ?? "").isEmpty
+    }
+
     static func run(to dir: String) {
+        guard allowed(environment: ProcessInfo.processInfo.environment) else {
+            print("Refusing to run: set DESKTOPBUDDY_HOME to a temporary folder with sample accounts.")
+            exit(2)
+        }
         Keychain.disabled = true
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         let out = URL(fileURLWithPath: dir)
         // Docs show accounts as connected (the Keychain is off in this mode).
-        AppState.shared.signedIn = Set(AppState.shared.config.accounts.map(\.id))
+        SampleData.loadAccounts()
 
         let router = SettingsRouter.shared
         let firstAccount = AppState.shared.config.accounts.first?.id
@@ -50,22 +60,7 @@ enum Snapshot {
         let wall = LinearGradient(colors: [Color(red: 0.55, green: 0.68, blue: 0.85), Color(red: 0.85, green: 0.78, blue: 0.9)],
                                   startPoint: .top, endPoint: .bottom)
         let dockModel = DockModel()
-        let accts = AppState.shared.config.accounts
-        let a1 = accts.first?.id, a2 = accts.dropFirst().first?.id ?? accts.first?.id
-        let now = Date()
-        _ = AppState.shared.offer([
-            BuddyItem(id: "s1", source: .mail, accountID: a1, title: "Contract ready to sign", from: "Jane Cooper",
-                      detail: "Hi, the final version is attached. Could you sign by Friday?", date: now, url: URL(string: "https://example.com")),
-            BuddyItem(id: "s2", source: .chat, accountID: a2, title: "Project Apollo", from: "Priya Shah",
-                      detail: "Can you review the new pricing page before the 3pm call?", date: now - 120, url: nil),
-            BuddyItem(id: "s3", source: .meeting, accountID: a1, title: "Design review", from: "Calendar",
-                      detail: "Starts in 5 min · Google Meet", date: now - 300, url: nil),
-            BuddyItem(id: "s4", source: .reminder, accountID: nil, title: "💧 Drink a glass of water", detail: "Stay hydrated!", date: now - 600, url: nil),
-            BuddyItem(id: "s5", source: .mail, accountID: a2, title: "Invoice #4821", from: "Accounts team",
-                      detail: "Please find this month's invoice attached.", date: now - 900, url: nil),
-            BuddyItem(id: "s6", source: .task, accountID: a1, title: "Send onboarding copy to Sam", from: "My tasks",
-                      detail: "Due today", date: now - 1800, url: nil),
-        ])
+        _ = AppState.shared.offer(SampleData.items())
         let saved = AppState.shared.config.dockSpot
         for spot in [DockSpot.bottomRight, .rightBottom] {
             AppState.shared.config.dockSpot = spot

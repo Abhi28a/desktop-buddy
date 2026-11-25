@@ -271,7 +271,10 @@ private struct PopoverRow: View {
                 Button("Clear All from \(state.ownerName(item.owner))") { state.clearAll(owner: item.owner) }
             }
         }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.spokenSummary(service: item.serviceName, owner: state.ownerName(item.owner)))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { if !sample { state.open(item) } }
         .accessibilityAction(named: "Open") { state.open(item) }
         .accessibilityAction(named: "Done") { state.done(item.id) }
     }

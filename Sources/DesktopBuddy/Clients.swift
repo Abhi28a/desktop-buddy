@@ -4,24 +4,32 @@ import AppKit
 // MARK: - Logos
 
 enum Logos {
-    /// Bundled logos (Resources/Logos/<key>.png), matched by account/client name or email domain.
+    /// Bundled logos (Sources/DesktopBuddy/Logos/<key>.png), matched by account/client name or email domain.
     static let bundledKeys = ["dynamatix", "iehub", "riskhawk", "gatehouse"]
 
     static func bundledURL(_ key: String) -> URL? {
         Bundle.main.url(forResource: key, withExtension: "png", subdirectory: "Logos")
             ?? devURL(key)
+            ?? previewURL(key)
     }
 
-    /// When running from `swift run`, read straight from the project folder.
+    /// When running from `swift run` or the build folder, read straight from the project folder.
     private static func devURL(_ key: String) -> URL? {
         let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
         var dir = exe.deletingLastPathComponent()
-        for _ in 0..<5 {
-            let u = dir.appendingPathComponent("Resources/Logos/\(key).png")
+        for _ in 0..<6 {
+            let u = dir.appendingPathComponent("Sources/DesktopBuddy/Logos/\(key).png")
             if FileManager.default.fileExists(atPath: u.path) { return u }
             dir = dir.deletingLastPathComponent()
         }
         return nil
+    }
+
+    /// Xcode previews can't read the project folder (macOS protects Documents), so they use the
+    /// copy packaged with the library. Only touched in previews: the app itself never has that package.
+    private static func previewURL(_ key: String) -> URL? {
+        guard Paths.isPreview(ProcessInfo.processInfo.environment) else { return nil }
+        return Bundle.module.url(forResource: key, withExtension: "png", subdirectory: "Logos")
     }
 
     static func guessKey(name: String, email: String = "") -> String? {

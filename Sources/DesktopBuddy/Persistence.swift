@@ -3,13 +3,31 @@ import Security
 
 enum Paths {
     static let supportDir: URL = {
-        // DESKTOPBUDDY_HOME lets the self-test run against a throwaway folder.
-        let dir = ProcessInfo.processInfo.environment["DESKTOPBUDDY_HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
-            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("DesktopBuddyV2", isDirectory: true)
+        let env = ProcessInfo.processInfo.environment
+        let dir = dataFolder(environment: env)
+        // Previews start fresh each time, so edits to SampleData always show.
+        if isPreview(env) && env["DESKTOPBUDDY_HOME"] == nil { try? FileManager.default.removeItem(at: dir) }
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()
+
+    /// True inside Xcode's design canvas (live previews).
+    static func isPreview(_ environment: [String: String]) -> Bool {
+        environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    }
+
+    /// Where settings and the inbox live. DESKTOPBUDDY_HOME (self-test, snapshots) and Xcode
+    /// previews both use a throwaway folder, so neither can ever touch the person's real data.
+    static func dataFolder(environment: [String: String]) -> URL {
+        if let home = environment["DESKTOPBUDDY_HOME"], !home.isEmpty {
+            return URL(fileURLWithPath: home, isDirectory: true)
+        }
+        if isPreview(environment) {
+            return FileManager.default.temporaryDirectory.appendingPathComponent("DesktopBuddyPreviews", isDirectory: true)
+        }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("DesktopBuddyV2", isDirectory: true)
+    }
     static let config = supportDir.appendingPathComponent("config.json")
     static let inbox = supportDir.appendingPathComponent("inbox.json")
     static let seen = supportDir.appendingPathComponent("seen.json")
@@ -43,7 +61,7 @@ enum Keychain {
     private static let service = "com.desktopbuddy.v2"
     private static let storeAccount = "store.v3"
     /// Set by `--snapshot` so offscreen rendering never touches the Keychain.
-    nonisolated(unsafe) static var disabled = false
+    nonisolated(unsafe) static var disabled = Paths.isPreview(ProcessInfo.processInfo.environment)
     nonisolated(unsafe) private static var cache: [String: String]?
     private static let lock = NSLock()
 

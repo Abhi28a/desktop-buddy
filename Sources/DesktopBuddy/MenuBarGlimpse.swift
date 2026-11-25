@@ -112,9 +112,15 @@ final class GlimpseController {
         }
     }
 
-    /// Counts down whatever time is left.
+    /// Counts down whatever time is left. With VoiceOver on it waits to be closed instead:
+    /// there's no pointer to pause it, and 10 seconds is rarely enough to reach and hear it.
     private func startTimer() {
         hideWork?.cancel()
+        guard GlimpsePlacement.autoHides(voiceOver: NSWorkspace.shared.isVoiceOverEnabled) else {
+            deadline = nil
+            model.setProgress(1, over: nil)
+            return
+        }
         let work = DispatchWorkItem { [weak self] in self?.hide() }
         hideWork = work
         deadline = Date().addingTimeInterval(remaining)
@@ -167,7 +173,7 @@ final class GlimpseController {
 /// Placement and timing rules, kept apart so they can be tested.
 enum GlimpsePlacement {
     /// The panel never resizes (resizing makes content jump); the card animates inside it.
-    static let card = NSSize(width: 372, height: 120)       // the tallest it gets; shorter messages are shorter
+    static let card = NSSize(width: 400, height: 168)       // the tallest it gets; shorter messages are shorter
     static let viewMore = NSSize(width: 104, height: 24)
     static let spacing: CGFloat = 6           // between the card and "View more"
     static let margin: CGFloat = 2
@@ -191,6 +197,9 @@ enum GlimpsePlacement {
 
     /// After reading, a moment to move away before it tucks itself in.
     static let minimumAfterHover: TimeInterval = 3
+
+    /// Whether the pop-up tucks itself away after a few seconds (not while VoiceOver is on).
+    static func autoHides(voiceOver: Bool) -> Bool { !voiceOver }
 
     static func timeLeft(deadline: Date, now: Date) -> TimeInterval { max(0, deadline.timeIntervalSince(now)) }
 }
@@ -221,7 +230,7 @@ final class GlimpseModel: ObservableObject {
         let a = AppState.shared.config.accounts.first
         m.item = BuddyItem(id: "sample:glimpse", source: .mail, accountID: a?.id, accountLabel: a?.label,
                            title: "Contract ready to sign", from: "Jane Cooper",
-                           detail: "Hi, the final version is attached. Could you sign by Friday?", date: Date(), url: nil)
+                           detail: "Hi, the final version is attached. Could you sign by Friday?", date: Date(), url: URL(string: "https://mail.google.com"))
         m.more = 2
         m.phase = .open
         m.progress = 0.65
@@ -264,6 +273,8 @@ struct GlimpseView: View {
     /// The message's real height, so a short one doesn't leave an empty black area.
     @Local private var contentHeight: CGFloat = 0
 
+    @Environment(\.colorSchemeContrast) private var contrast
+    private var ink: Look.OnDark { Look.OnDark(increaseContrast: contrast == .increased) }
     private var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
     private var open: Bool { model.phase == .open }
     private var size: CGSize {
@@ -294,7 +305,7 @@ struct GlimpseView: View {
     }
 
     private var island: some View {
-        let shape = RoundedRectangle(cornerRadius: open ? 26 : 13, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: open ? 30 : 13, style: .continuous)
         // The text sits in an overlay so it never sizes the island: the island grows and the text is revealed.
         return shape.fill(Color.black)
             .frame(width: size.width, height: size.height)
@@ -314,22 +325,8 @@ struct GlimpseView: View {
         .onTapGesture { actions.open() }
         .animation(.easeInOut(duration: 0.2), value: model.item?.id)
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(model.item.map { "\($0.serviceName): \($0.headline)" } ?? "")
+        .accessibilityLabel(model.item.map { $0.spokenSummary(service: $0.serviceName, owner: state.ownerName($0.owner)) } ?? "")
         .accessibilityAddTraits(.isButton)
-    }
-
-    /// Small ring that winds down over 10 seconds and stops while you hover.
-    private var countdown: some View {
-        ZStack {
-            Circle().stroke(Color.white.opacity(0.16), lineWidth: 2)
-            Circle()
-                .trim(from: 0, to: model.progress)
-                .stroke(Color.white.opacity(model.hovering ? 0.9 : 0.6), style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        .frame(width: 13, height: 13)
-        .help(model.hovering ? "Paused while you read" : "Closes in a few seconds")
-        .accessibilityHidden(true)
     }
 
     private var viewMoreButton: some View {
@@ -350,64 +347,75 @@ struct GlimpseView: View {
     }
 
     private func content(_ item: BuddyItem) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            CardIcon(item: item, size: 40)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(item.source == .reminder ? item.serviceName : "\(item.serviceName) · \(state.ownerName(item.owner))")
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
-                    Spacer(minLength: 6)
-                    if model.hovering {
-                        actionsRow
-                    } else if model.more > 0 {
-                        Text("+\(model.more) more")
-                            .font(.system(size: 11, weight: .semibold)).foregroundStyle(.white.opacity(0.85))
-                            .padding(.horizontal, 7).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.white.opacity(0.16)))
-                    } else {
-                        Text(shortAgo(item.date)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).monospacedDigit()
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                CardIcon(item: item, size: GlimpseLayout.icon, ring: .black)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(item.source == .reminder ? item.serviceName : "\(item.serviceName) · \(state.ownerName(item.owner))")
+                            .font(.system(size: 12, weight: .medium)).foregroundStyle(ink.secondary).lineLimit(1)
+                        Spacer(minLength: 6)
+                        if model.more > 0 {
+                            Text("+\(model.more) more")
+                                .font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                                .padding(.horizontal, 8).frame(height: 20)
+                                .background(Capsule().fill(Color.white.opacity(0.18)))
+                                .accessibilityLabel("\(model.more) more waiting")
+                        } else if !model.hovering {
+                            Text(shortAgo(item.date)).font(.system(size: 12, weight: .medium)).foregroundStyle(ink.secondary).monospacedDigit()
+                        }
+                        if model.hovering { hideButton }
                     }
-                    countdown.alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
-                }
-                .frame(height: 22)
-                Text(item.headline).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
-                if let sub = item.subhead, !sub.isEmpty {
-                    Text(sub).font(.system(size: 13)).foregroundStyle(.white.opacity(0.88)).lineLimit(1)
-                }
-                if let d = item.detail, !d.isEmpty {
-                    Text(d).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(item.subhead?.isEmpty == false ? 1 : 2)
+                    .frame(height: 20)
+                    Text(item.headline).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                    if let sub = item.subhead, !sub.isEmpty {
+                        Text(sub).font(.system(size: 14, weight: .semibold)).foregroundStyle(ink.subhead).lineLimit(1)
+                    }
+                    if let d = item.detail, !d.isEmpty {
+                        Text(d).font(.system(size: 13)).foregroundStyle(ink.secondary)
+                            .lineLimit(item.subhead?.isEmpty == false ? 1 : 2)
+                    }
                 }
             }
+            // Always showing, so the two things people do most are one click away.
+            HStack(spacing: 8) {
+                if item.url != nil {
+                    Button(action: actions.open) { buttonLabel("Open", "arrow.up.forward") }
+                        .buttonStyle(DarkCapsuleStyle(fill: 1, hoverFill: 0.85)).foregroundStyle(.black)
+                        .help("Open in \(item.serviceName)")
+                }
+                Button(action: actions.done) { buttonLabel("Done", "checkmark") }
+                    .buttonStyle(DarkCapsuleStyle(fill: 0.18, hoverFill: 0.28)).foregroundStyle(.white)
+                    .help(item.doneHelp)
+            }
+            .padding(.leading, GlimpseLayout.icon + 12)
         }
-        .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 16)
+        .padding(.horizontal, 18).padding(.top, 16).padding(.bottom, 18)
         .frame(width: GlimpsePlacement.card.width, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
         .background(GeometryReader { g in Color.clear.preference(key: GlimpseHeightKey.self, value: g.size.height) })
         .onPreferenceChange(GlimpseHeightKey.self) { h in if h > 0, h != contentHeight { contentHeight = h } }
     }
 
-    private var actionsRow: some View {
-        HStack(spacing: 6) {
-            islandButton("Done", symbol: "checkmark", action: actions.done)
-                .help(model.item?.doneHelp ?? "")
-            islandButton(nil, symbol: "xmark", action: actions.close)
-                .help("Hide for now. It stays in the menu bar dropdown.")
-        }
+    private func buttonLabel(_ title: String, _ symbol: String) -> some View {
+        Label(title, systemImage: symbol)
+            .font(.system(size: 12.5, weight: .semibold))
+            .padding(.horizontal, 13).frame(height: 28)
     }
 
-    private func islandButton(_ title: String?, symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 3) {
-                Image(systemName: symbol).font(.system(size: 9, weight: .bold))
-                if let title { Text(title).font(.system(size: 12, weight: .semibold)) }
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, title == nil ? 0 : 9)
-            .frame(width: title == nil ? 22 : nil, height: 22)
+    /// Hide for now (it stays in the dropdown): shown while the pointer is over the pop-up.
+    private var hideButton: some View {
+        Button(action: actions.close) {
+            Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                .frame(width: 20, height: 20)
         }
-        .buttonStyle(DarkCapsuleStyle(fill: 0.18, hoverFill: 0.26))
-        .accessibilityLabel(title ?? "Hide")
+        .buttonStyle(DarkCapsuleStyle(fill: 0.18, hoverFill: 0.28))
+        .help("Hide for now. It stays in the menu bar dropdown.")
+        .accessibilityLabel("Hide")
     }
 }
+
+enum GlimpseLayout {
+    static let icon: CGFloat = 42
+}
+

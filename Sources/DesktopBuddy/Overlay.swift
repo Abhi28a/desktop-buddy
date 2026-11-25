@@ -56,18 +56,31 @@ extension BuddyItem {
 struct CardIcon: View {
     let item: BuddyItem
     var size: CGFloat = 34
+    /// The colour of the surface behind, so the badge's cut-out ring blends in (black on the dark surfaces).
+    var ring: Color = Color(nsColor: .windowBackgroundColor)
+    @ObservedObject var state = AppState.shared
+
+    /// Your own reminders already show a bell, so a second bell badge would only repeat it.
+    static func showsBadge(_ item: BuddyItem, customReminderLogo: Bool) -> Bool {
+        !(item.owner == reminderOwner && item.source == .reminder && !customReminderLogo)
+    }
+
     var body: some View {
         OwnerBuddy(owner: item.owner, excited: false, size: size)
             .shadow(color: .clear, radius: 0)
             .overlay(alignment: .bottomTrailing) {
-                Image(systemName: item.source.symbol)
-                    .font(.system(size: size * 0.24, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: size * 0.48, height: size * 0.48)
-                    .background(Circle().fill(item.source.tint.gradient))
-                    .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.5))
-                    .offset(x: size * 0.14, y: size * 0.14)
+                if Self.showsBadge(item, customReminderLogo: state.config.reminderLogoPath != nil) {
+                    Image(systemName: item.source.symbol)
+                        .font(.system(size: size * 0.24, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: size * 0.48, height: size * 0.48)
+                        .background(Circle().fill(item.source.tint.gradient))
+                        .padding(1.5)
+                        .background(Circle().fill(ring))
+                        .offset(x: size * 0.14 + 1.5, y: size * 0.14 + 1.5)
+                }
             }
+            .accessibilityHidden(true)
     }
 }
 

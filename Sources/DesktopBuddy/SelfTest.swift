@@ -24,6 +24,8 @@ enum SelfTest {
         undoClear()
         labelQueries()
         sounds()
+        snapshotGuard()
+        lookAndAccessibility()
         tour()
         placement()
         adminSettings()
@@ -343,6 +345,64 @@ enum SelfTest {
         check("Outlook: all folders per category", o.count == 2 && o.allSatisfy { $0.0.hasSuffix("/me/messages") })
         check("Outlook category filter", o[0].1["$filter"]?.hasSuffix("categories/any(c:c eq 'Red')") == true)
         check("apostrophes are escaped", o[1].1["$filter"]?.contains("eq 'O''Brien'") == true)
+    }
+
+    private static func snapshotGuard() {
+        begin("Snapshot safety")
+        check("snapshots refuse to run on real settings", !Snapshot.allowed(environment: [:]))
+        check("snapshots refuse an empty data folder setting", !Snapshot.allowed(environment: ["DESKTOPBUDDY_HOME": ""]))
+        check("snapshots run in a throwaway folder", Snapshot.allowed(environment: ["DESKTOPBUDDY_HOME": "/tmp/db-snap"]))
+        let real = Paths.dataFolder(environment: [:]).path
+        check("the app uses its real data folder normally", real.hasSuffix("Application Support/DesktopBuddyV2"))
+        let preview = Paths.dataFolder(environment: ["XCODE_RUNNING_FOR_PREVIEWS": "1"]).path
+        check("Xcode previews never use the real data folder", preview != real && preview.contains("DesktopBuddyPreviews"))
+        check("a test folder wins over everything", Paths.dataFolder(environment: ["DESKTOPBUDDY_HOME": "/tmp/db-x", "XCODE_RUNNING_FOR_PREVIEWS": "1"]).path == "/tmp/db-x")
+        check("previews are recognised", Paths.isPreview(["XCODE_RUNNING_FOR_PREVIEWS": "1"]) && !Paths.isPreview([:]))
+        check("every built-in logo is found", Logos.bundledKeys.allSatisfy { Logos.bundledURL($0) != nil })
+    }
+
+    private static func lookAndAccessibility() {
+        begin("Look and accessibility")
+        check("Liquid Glass where the Mac has it", Look.surface(glassAvailable: true, reduceTransparency: false, increaseContrast: false) == .glass)
+        check("frosted glass on macOS 14–15", Look.surface(glassAvailable: false, reduceTransparency: false, increaseContrast: false) == .frosted)
+        check("Reduce Transparency gives a solid surface", Look.surface(glassAvailable: true, reduceTransparency: true, increaseContrast: false) == .solid)
+        check("Increase Contrast gives a solid surface", Look.surface(glassAvailable: true, reduceTransparency: false, increaseContrast: true) == .solid)
+        check("solid on older Macs too", Look.surface(glassAvailable: false, reduceTransparency: true, increaseContrast: false) == .solid)
+        check("secondary text stays readable (74% white or more)", Look.secondaryOpacity >= 0.74)
+
+        check("a drag with the button released is finished", DockPlacement.dragIsStuck(dragging: true, buttonDown: false))
+        check("a real drag in progress is left alone", !DockPlacement.dragIsStuck(dragging: true, buttonDown: true))
+        check("no drag, nothing to finish", !DockPlacement.dragIsStuck(dragging: false, buttonDown: false))
+        check("count badge never smaller than 10pt", DockPlacement.badge(item: DockPlacement.item(scale: 0.8)).font >= 10)
+        check("count badge grows with bigger logos", DockPlacement.badge(item: DockPlacement.item(scale: 1.6)).font > DockPlacement.badge(item: DockPlacement.item(scale: 1)).font)
+        check("big counts show 99+", DockPlacement.badgeText(140) == "99+" && DockPlacement.badgeText(7) == "7")
+
+        let now = Date()
+        let reminder = BuddyItem(id: "r", source: .reminder, accountID: nil, title: "Stretch", detail: nil, date: now, url: nil)
+        let mail = BuddyItem(id: "m", source: .mail, accountID: "a", title: "Contract ready", from: "Jane", detail: "Sign by Friday", date: now - 240, url: nil)
+        check("reminders don't show a second bell", !CardIcon.showsBadge(reminder, customReminderLogo: false))
+        check("reminders with your own logo keep the bell badge", CardIcon.showsBadge(reminder, customReminderLogo: true))
+        check("mail keeps its badge", CardIcon.showsBadge(mail, customReminderLogo: false))
+
+        check("spoken time: just now", spokenAgo(now, now: now) == "just now")
+        check("spoken time: 1 minute", spokenAgo(now - 60, now: now) == "1 minute ago")
+        check("spoken time: 4 minutes", spokenAgo(now - 240, now: now) == "4 minutes ago")
+        check("spoken time: 2 hours", spokenAgo(now - 7200, now: now) == "2 hours ago")
+        check("spoken time: 3 days", spokenAgo(now - 3 * 86_400, now: now) == "3 days ago")
+        check("VoiceOver hears sender, subject, preview, account and time",
+              mail.spokenSummary(service: "Gmail", owner: "Work", now: now) == "Gmail from Jane: Contract ready. Sign by Friday. Work, 4 minutes ago.")
+        check("VoiceOver hears a reminder without an account",
+              reminder.spokenSummary(service: "Reminder", owner: "Reminders", now: now) == "Reminder: Stretch. Just now.")
+
+        let rgb = { (t: AccountTint) -> Bool in Look.prefersDarkText(on: t.color) }
+        check("white count on blue, red and graphite", !rgb(.blue) && !rgb(.red) && !rgb(.graphite) && !rgb(.purple))
+        check("black count on yellow, orange and green", rgb(.yellow) && rgb(.orange) && rgb(.green))
+        check("pure white wants dark text, black wants white", Look.prefersDarkText(r: 1, g: 1, b: 1) && !Look.prefersDarkText(r: 0, g: 0, b: 0))
+        check("the pop-up has room for its Open and Done buttons", GlimpsePlacement.card.height >= 160 && GlimpsePlacement.card.width >= 400)
+
+        check("the pop-up tucks itself away normally", GlimpsePlacement.autoHides(voiceOver: false))
+        check("the pop-up waits for VoiceOver users to close it", !GlimpsePlacement.autoHides(voiceOver: true))
+        check("menu bar icon says when it's paused", MenuBarMark.description(paused: true).contains("paused") && !MenuBarMark.description(paused: false).contains("paused"))
     }
 
     private static func sounds() {

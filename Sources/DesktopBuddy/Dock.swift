@@ -89,6 +89,16 @@ enum DockPlacement {
     /// The size setting (Appearance → On Screen) scales the logos.
     static let scaleRange: ClosedRange<Double> = 0.8...1.6
     static func item(scale: Double) -> CGFloat { (item * CGFloat(min(max(scale, scaleRange.lowerBound), scaleRange.upperBound))).rounded() }
+    /// "Dragging" with no mouse button held means the drag's end was missed; finish it so the dock works again.
+    static func dragIsStuck(dragging: Bool, buttonDown: Bool) -> Bool { dragging && !buttonDown }
+
+    /// The red count grows with the logos, so it stays readable at every size setting.
+    static func badge(item: CGFloat) -> (font: CGFloat, size: CGFloat) {
+        let font = max(10, (item * 0.34).rounded())
+        return (font, (font * 1.6).rounded())
+    }
+    /// Counts above 99 show as "99+", like the macOS Dock, so the badge never covers the logo.
+    static func badgeText(_ count: Int) -> String { count > 99 ? "99+" : "\(count)" }
     static func zoneSize(vertical: Bool) -> NSSize { vertical ? NSSize(width: 64, height: 160) : NSSize(width: 160, height: 64) }
 
     /// The point each place pins its dock to.
@@ -228,6 +238,13 @@ final class DockController {
             if k != AppState.shared.usingKeyboard && (k || e.type != .keyDown) { AppState.shared.usingKeyboard = k }
             return e
         }
+        // A drag always ends when the button comes up, even if the gesture itself was cancelled
+        // (a click that wobbled a few points used to leave the dock "dragging", so its list never opened).
+        NSEvent.addLocalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] e in
+            DispatchQueue.main.async { self?.dragEnded() }
+            return e
+        }
+        NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseUp]) { [weak self] _ in self?.dragEnded() }
         // Clicking anywhere else closes the list.
         NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.clickedOutside() }
 
@@ -263,6 +280,10 @@ final class DockController {
         guard !state.items.isEmpty || undoShowing, !state.config.paused else {
             dockPanel.orderOut(nil); listPanel.orderOut(nil)
             if state.expanded { state.expanded = false }
+            return
+        }
+        if DockPlacement.dragIsStuck(dragging: model.dragging, buttonDown: NSEvent.pressedMouseButtons & 1 != 0) {
+            dragEnded()
             return
         }
         if !model.dragging {
@@ -315,7 +336,7 @@ final class DockController {
     }
 
     private func dragEnded() {
-        guard dragStart != nil else { return }
+        guard dragStart != nil || model.dragging else { return }
         let spot = DockPlacement.nearest(to: NSEvent.mouseLocation, in: screen)
         dragStart = nil
         model.dragging = false
@@ -430,12 +451,18 @@ struct DockView: View {
             if !arrowLeading && showArrow { arrow(open: open, owner: owner) }
         }
         .padding(4)
-        .background(FrostedGlass().clipShape(Capsule()))
-        .overlay(Capsule().stroke(Color.white.opacity(open ? 0.6 : 0.22), lineWidth: open ? 1 : 0.5))
+        .dockPillSurface(open: open)
+        // The count sits on top of the glass, not inside it, so its red stays solid.
+        .overlay(alignment: arrowLeading ? .trailing : .leading) {
+            countBadge(count)
+                .frame(width: item + 8, height: item + 8, alignment: .topTrailing)
+                .offset(x: 1)
+                .allowsHitTesting(false)
+        }
         .contentShape(Capsule())
         .overlay(alignment: labelAlignment) {
             if hovered == owner && showsLabels {
-                label(Text(state.ownerName(owner)).fontWeight(.semibold) + Text("  \(count) waiting").foregroundColor(.white.opacity(0.65)))
+                label(Text(state.ownerName(owner)).fontWeight(.semibold) + Text("  \(count) waiting").foregroundColor(.white.opacity(Look.secondaryOpacity)))
             }
         }
         .onHover { h in pointer = h ? owner : (pointer == owner ? nil : pointer) }
@@ -454,16 +481,19 @@ struct DockView: View {
     private func logo(_ owner: String, count: Int) -> some View {
         OwnerMark(owner: owner, size: item)
             .clipShape(Circle())
-            .overlay(alignment: .topTrailing) {
-                Text("\(count)")
-                    .font(.system(size: 9, weight: .bold)).monospacedDigit()
-                    .contentTransition(.numericText())
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4).frame(minWidth: 15, minHeight: 15)
-                    .background(Capsule().fill(Color.red))
-                    .offset(x: 5, y: -4)
-                    .animation(.snappy, value: count)
-            }
+    }
+
+    private func countBadge(_ count: Int) -> some View {
+        let b = DockPlacement.badge(item: item)
+        return Text(DockPlacement.badgeText(count))
+            .font(.system(size: b.font, weight: .bold)).monospacedDigit()
+            .contentTransition(.numericText())
+            .foregroundStyle(.white)
+            .padding(.horizontal, b.font * 0.4).frame(minWidth: b.size, minHeight: b.size)
+            // System red, a touch deeper, so white digits pass contrast; a dark hairline keeps it off light logos.
+            .background(Capsule().fill(Color(red: 0.86, green: 0.16, blue: 0.16)))
+            .overlay(Capsule().strokeBorder(Color.black.opacity(0.25), lineWidth: 0.5))
+            .animation(.snappy, value: count)
     }
 
     /// The dropdown arrow, pointing to where the list opens; flips while it's open.
@@ -506,6 +536,14 @@ struct DockView: View {
             .allowsHitTesting(false)
             .transition(.opacity)
     }
+}
+
+// MARK: - Liquid Glass (macOS 26 and later), with the 2.4 look kept exactly on older Macs
+
+/// Tint laid over the glass so white text stays readable on light and busy wallpapers.
+enum GlassTint {
+    static let pill = 0.22        // dock logos: mostly clear, like the macOS Dock
+    static let panel = 0.62       // notification list: darker, because it's full of text
 }
 
 /// Dark frosted glass that blurs whatever is behind the bar, even while another app is in front.
@@ -571,143 +609,163 @@ struct DockZonesView: View {
 
 // MARK: - The list
 
-/// Fixed-size card that opens from the chevron (or a logo): newest first, scrolls after about four.
-/// Filter by account or client, and by kind (mail, chats, meetings…).
+/// Fixed-size card that opens from a dock logo: notifications grouped under each account or client,
+/// newest first, each tied to its account by a coloured edge. Scrolls when it's full.
 struct DockListView: View {
     @ObservedObject var state = AppState.shared
     @Local private var kind: ItemSource? = nil
 
-    private var byOwner: [BuddyItem] { state.items.filter { state.filterOwner == nil || $0.owner == state.filterOwner } }
-    private var items: [BuddyItem] { byOwner.filter { kind == nil || $0.source == kind }.sorted { $0.date > $1.date } }
+    private var shownOwners: [String] {
+        state.activeOwners.filter { state.filterOwner == nil || $0 == state.filterOwner }
+    }
+    private func items(_ owner: String) -> [BuddyItem] {
+        state.items.filter { $0.owner == owner && (kind == nil || $0.source == kind) }.sorted { $0.date > $1.date }
+    }
+    private var visible: [BuddyItem] { shownOwners.flatMap { items($0) } }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            ownerChips
-            Rectangle().fill(Color.white.opacity(0.08)).frame(height: 0.5)
-            if items.isEmpty {
+            if visible.isEmpty {
                 VStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle").font(.system(size: 26)).foregroundStyle(.green)
-                    Text(kind == nil ? "All caught up" : "Nothing in \(kind!.pluralName)").font(.headline).foregroundStyle(.white)
+                    Image(systemName: "checkmark.circle").font(.system(size: 28)).foregroundStyle(.green)
+                    Text(kind == nil ? "All caught up" : "Nothing in \(kind!.pluralName)")
+                        .font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 2) {
-                        ForEach(items) { DockRow(item: $0) }
+                    LazyVStack(spacing: 10) {
+                        ForEach(shownOwners, id: \.self) { owner in
+                            let mine = items(owner)
+                            if !mine.isEmpty { DockGroup(owner: owner, items: mine) }
+                        }
                     }
-                    .padding(6)
+                    .padding(.horizontal, 10).padding(.bottom, 10)
                 }
             }
         }
         .frame(width: DockPlacement.listSize.width, height: DockPlacement.listSize.height)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Color.black))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(Color.white.opacity(0.12), lineWidth: 0.5))
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .listPanelSurface(cornerRadius: 26)
         .environment(\.colorScheme, .dark)
+        .onChange(of: state.filterOwner) { _, _ in kind = nil }
     }
 
     private var header: some View {
         HStack(spacing: 8) {
-            Text("Notifications").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-            Text("\(items.count)").font(.system(size: 12, weight: .semibold)).monospacedDigit()
-                .foregroundStyle(.white.opacity(0.6))
-            Spacer()
-            if state.undo == nil { kindMenu }
+            if state.filterOwner != nil && state.activeOwners.count > 1 {
+                Button { withAnimation(.easeOut(duration: 0.15)) { state.filterOwner = nil } } label: {
+                    Image(systemName: "chevron.left").font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white).frame(width: 28, height: 28)
+                }
+                .buttonStyle(DarkCapsuleStyle(fill: 0.16, hoverFill: 0.24))
+                .help("Show every account").accessibilityLabel("Show every account")
+            }
+            Text("Notifications").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+                .lineLimit(1).layoutPriority(1)
+            Spacer(minLength: 4)
+            if state.undo == nil && !state.items.isEmpty { kindMenu }
             if let undo = state.undo {
                 UndoPill(undo: undo, dark: true)
-            } else if !items.isEmpty {
+            } else if !visible.isEmpty {
                 Button {
                     withAnimation(buddySpring) {
-                        if kind == nil { state.clearAll(owner: state.filterOwner) } else { state.done(items.map(\.id)) }
+                        if kind == nil { state.clearAll(owner: state.filterOwner) } else { state.done(visible.map(\.id)) }
                     }
                 } label: {
-                    Label("Clear All", systemImage: "checkmark.circle").font(.system(size: 12, weight: .semibold))
-                        .padding(.horizontal, 10).frame(height: 26)
+                    Label("Clear All", systemImage: "checkmark.circle").font(.system(size: 12.5, weight: .semibold))
+                        .padding(.horizontal, 12).frame(height: 30)
                 }
-                .buttonStyle(DarkCapsuleStyle()).foregroundStyle(.white)
+                .buttonStyle(DarkCapsuleStyle(fill: 0.16, hoverFill: 0.24)).foregroundStyle(.white)
                 .help("Remove these from Desktop Buddy. Nothing changes in your mail or chats.")
             }
         }
-        .padding(.horizontal, 14).frame(height: 48)
+        .padding(.leading, 18).padding(.trailing, 14).padding(.top, 14).padding(.bottom, 12)
     }
 
-    /// Kind filter: Mail, Chats, Meetings, Tasks, Reminders (only kinds that are waiting).
+    /// Kind filter (Mail, Chats, Meetings, Tasks, Reminders), as a small round button so the title leads.
     private var kindMenu: some View {
-        let kinds = ItemSource.allCases.filter { k in byOwner.contains { $0.source == k } }
+        let pool = state.items.filter { state.filterOwner == nil || $0.owner == state.filterOwner }
+        let kinds = ItemSource.allCases.filter { k in pool.contains { $0.source == k } }
         return Menu {
             Button { kind = nil } label: { Label("All kinds", systemImage: kind == nil ? "checkmark" : "") }
             Divider()
             ForEach(kinds, id: \.self) { k in
                 Button { kind = k } label: {
-                    Label("\(k.pluralName.capitalized) (\(byOwner.filter { $0.source == k }.count))", systemImage: kind == k ? "checkmark" : k.symbol)
+                    Label("\(k.pluralName.capitalized) (\(pool.filter { $0.source == k }.count))", systemImage: kind == k ? "checkmark" : k.symbol)
                 }
             }
         } label: {
-            HStack(spacing: 4) {
-                Image(systemName: kind == nil ? "line.3.horizontal.decrease" : kind!.symbol).font(.system(size: 11, weight: .bold))
-                Text(kind.map { $0.pluralName.capitalized } ?? "All kinds").font(.system(size: 12, weight: .semibold))
-                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).opacity(0.7)
-            }
-            .foregroundStyle(kind == nil ? Color.white : Color.black)
-            .padding(.horizontal, 10).frame(height: 26)
-            .background(Capsule().fill(kind == nil ? Color.white.opacity(0.14) : Color.white))
-            .contentShape(Capsule())
+            Image(systemName: kind?.symbol ?? "line.3.horizontal.decrease")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(kind == nil ? Color.white : Color.black)
+                .frame(width: 30, height: 30)
+                .background(Circle().fill(kind == nil ? Color.white.opacity(0.16) : Color.white))
+                .contentShape(Circle())
         }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Show only mail, chats, meetings…")
-        .onChange(of: state.filterOwner) { _, _ in kind = nil }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help(kind.map { "Showing only \($0.pluralName.lowercased())" } ?? "Show only mail, chats, meetings…")
+        .accessibilityLabel(kind.map { "Filter: \($0.pluralName)" } ?? "Filter by kind")
     }
+}
 
-    /// One chip per account or client with something waiting, plus All.
-    private var ownerChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                chip(nil, title: "All", count: state.items.count)
-                ForEach(state.activeOwners, id: \.self) { o in
-                    chip(o, title: state.ownerName(o), count: state.items.filter { $0.owner == o }.count)
+/// One account or client: its logo, name, count and Clear, then its notifications.
+private struct DockGroup: View {
+    let owner: String
+    let items: [BuddyItem]
+    @ObservedObject var state = AppState.shared
+
+    var body: some View {
+        let tint = ownerColor(owner)
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                OwnerMark(owner: owner, size: 28)
+                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+                Text(state.ownerName(owner)).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                Text("\(items.count)").font(.system(size: 12, weight: .bold)).monospacedDigit()
+                    .foregroundStyle(Look.prefersDarkText(on: tint) ? Color.black : Color.white)
+                    .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 22)
+                    .background(Capsule().fill(tint))
+                    .accessibilityLabel("\(items.count) waiting")
+                Spacer(minLength: 6)
+                Button { withAnimation(buddySpring) { state.clearAll(owner: owner) } } label: {
+                    Text("Clear").font(.system(size: 12.5, weight: .semibold)).padding(.horizontal, 10).frame(height: 26)
                 }
+                .buttonStyle(DarkCapsuleStyle(fill: 0, hoverFill: 0.16)).foregroundStyle(.white)
+                .help("Remove these from Desktop Buddy. Nothing changes in your mail or chats.")
+                .accessibilityLabel("Clear \(state.ownerName(owner))")
             }
-            .padding(.horizontal, 14)
+            .padding(.leading, 12).padding(.trailing, 8).padding(.vertical, 10)
+            .accessibilityElement(children: .contain)
+            ForEach(items) { DockRow(item: $0, tint: tint) }
         }
-        .frame(height: 36)
-        .padding(.bottom, 8)
-    }
-
-    private func chip(_ owner: String?, title: String, count: Int) -> some View {
-        let on = state.filterOwner == owner
-        return Button { withAnimation(.easeOut(duration: 0.15)) { state.filterOwner = owner } } label: {
-            HStack(spacing: 5) {
-                if let owner { OwnerMark(owner: owner, size: 18).clipShape(Circle()) }
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                Text("\(count)").font(.system(size: 11, weight: .semibold)).monospacedDigit().opacity(0.6)
-            }
-            .foregroundStyle(on ? Color.black : Color.white)
-            .padding(.leading, owner == nil ? 11 : 4).padding(.trailing, 10).frame(height: 28)
-        }
-        .buttonStyle(DarkCapsuleStyle(fill: on ? 1 : 0.12, hoverFill: on ? 1 : 0.2))
-        .accessibilityLabel("\(title), \(count)")
-        .accessibilityAddTraits(on ? .isSelected : [])
+        .padding(.bottom, 6)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.white.opacity(0.07)))
     }
 }
 
 private struct DockRow: View {
     let item: BuddyItem
+    let tint: Color
     @ObservedObject var state = AppState.shared
     @Local private var hover = false
     @FocusState private var focused: Bool
+    @Environment(\.colorSchemeContrast) private var contrast
     private var keyFocused: Bool { focused && state.usingKeyboard }
+    private var ink: Look.OnDark { Look.OnDark(increaseContrast: contrast == .increased) }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 11) {
-            CardIcon(item: item, size: 32).padding(.top, 2)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 4) {
-                    Text(item.source == .reminder ? item.serviceName : "\(item.serviceName) · \(state.ownerName(item.owner))")
-                        .font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).lineLimit(1)
+        HStack(alignment: .top, spacing: 10) {
+            // The coloured edge ties the row to its account.
+            RoundedRectangle(cornerRadius: 2, style: .continuous).fill(tint).frame(width: 4)
+            Image(systemName: item.source.symbol).font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white).frame(width: 28, height: 28)
+                .background(Circle().fill(item.source.tint.gradient))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.headline).font(.system(size: 14, weight: .bold)).foregroundStyle(.white).lineLimit(1)
                     Spacer(minLength: 6)
                     if hover || keyFocused {
                         HStack(spacing: 4) {
@@ -715,26 +773,27 @@ private struct DockRow: View {
                             small("Done", "checkmark") { withAnimation(buddySpring) { state.done(item.id) } }
                                 .help(item.doneHelp)
                         }
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
                     } else {
-                        Text(shortAgo(item.date)).font(.system(size: 11)).foregroundStyle(.white.opacity(0.55)).monospacedDigit()
+                        Text(shortAgo(item.date)).font(.system(size: 12)).foregroundStyle(ink.secondary).monospacedDigit()
                     }
                 }
-                .frame(height: 22)
-                Text(item.headline).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).lineLimit(1)
+                .frame(minHeight: 22)
                 if let sub = item.subhead, !sub.isEmpty {
-                    Text(sub).font(.system(size: 13)).foregroundStyle(.white.opacity(0.88)).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Text(sub).font(.system(size: 13, weight: .medium)).foregroundStyle(ink.subhead).lineLimit(1)
                 }
                 if let d = item.detail, !d.isEmpty {
-                    Text(d).font(.system(size: 12)).foregroundStyle(.white.opacity(0.6)).lineLimit(2)
+                    Text(d).font(.system(size: 12.5)).foregroundStyle(ink.secondary).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
-        .padding(.horizontal, 8).padding(.vertical, 8)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.leading, 12).padding(.trailing, 12).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.white.opacity(hover || keyFocused ? 0.09 : 0))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Color.white.opacity(0.7), lineWidth: keyFocused ? 1.5 : 0)))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Color.white.opacity(hover || keyFocused ? 0.08 : 0))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Color.white.opacity(0.7), lineWidth: keyFocused ? 1.5 : 0))
+            .padding(.horizontal, 4))
         .contentShape(Rectangle())
         // Keyboard: Tab to a row, Return opens it, Delete is Done.
         .focusable()
@@ -751,7 +810,10 @@ private struct DockRow: View {
             Button("Clear All from \(state.ownerName(item.owner))") { state.clearAll(owner: item.owner) }
         }
         .help(item.detail ?? item.title)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(item.spokenSummary(service: item.serviceName, owner: state.ownerName(item.owner)))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { state.open(item) }
         .accessibilityAction(named: "Open") { state.open(item) }
         .accessibilityAction(named: "Done") { state.done(item.id) }
     }

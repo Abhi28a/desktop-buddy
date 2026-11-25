@@ -1,13 +1,15 @@
 // swift-tools-version:5.10
 import PackageDescription
 
+// The app's code and screens, as a library. Open this folder in Xcode to see live previews.
+// The program itself is in App/ (one line that starts the app); build-app.sh builds it.
 let package = Package(
-    name: "DesktopBuddyV2",
+    name: "DesktopBuddyKit",
     platforms: [.macOS(.v14)],
+    products: [
+        .library(name: "DesktopBuddyKit", targets: ["DesktopBuddyKit"]),
+    ],
     targets: [
-        .executableTarget(
-            name: "DesktopBuddyV2",
-            path: "Sources/DesktopBuddy"
-        )
+        .target(name: "DesktopBuddyKit", path: "Sources/DesktopBuddy", resources: [.copy("Logos")]),
     ]
 )

@@ -10,20 +10,21 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-swift build -c release
+swift build -c release --package-path App
+BIN=App/.build/release/DesktopBuddyV2
 
 # Scenario tests (temp data folder, no Keychain, no network to Google/Microsoft). Any failure stops the build.
 TEST_HOME=$(mktemp -d)
-if ! DESKTOPBUDDY_HOME="$TEST_HOME" .build/release/DesktopBuddyV2 --selftest > "$TEST_HOME/selftest.log" 2>&1; then
+if ! DESKTOPBUDDY_HOME="$TEST_HOME" "$BIN" --selftest > "$TEST_HOME/selftest.log" 2>&1; then
   cat "$TEST_HOME/selftest.log"; echo "Self-test failed, not packaging."; exit 1
 fi
 tail -1 "$TEST_HOME/selftest.log"; rm -rf "$TEST_HOME"
 APP="dist/Desktop Buddy.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp .build/release/DesktopBuddyV2 "$APP/Contents/MacOS/DesktopBuddyV2"
+cp "$BIN" "$APP/Contents/MacOS/DesktopBuddyV2"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-cp -R Resources/Logos "$APP/Contents/Resources/Logos"
+cp -R Sources/DesktopBuddy/Logos "$APP/Contents/Resources/Logos"
 if [[ -f team.json ]]; then cp team.json "$APP/Contents/Resources/team.json"; echo "Bundled team.json"; fi
 
 # A Google client with no secret (iOS type) returns to the app's own URL scheme, so register it.

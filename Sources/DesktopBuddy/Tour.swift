@@ -252,24 +252,32 @@ enum MenuBarMark {
                 let scale = min(rect.width / s.width, rect.height / s.height)
                 let w = s.width * scale, h = s.height * scale
                 let r = NSRect(x: (rect.width - w) / 2, y: (rect.height - h) / 2, width: w, height: h)
-                source.draw(in: r, from: .zero, operation: .sourceOver, fraction: paused ? 0.4 : 1)
+                source.draw(in: r, from: .zero, operation: .sourceOver, fraction: paused ? 0.5 : 1)
             } else {
                 NSImage(systemSymbolName: "bell", accessibilityDescription: nil)?.draw(in: rect)
             }
             if paused {
-                // A slash, like bell.slash.
+                // A slash like bell.slash: first cut a clear gap through the mark, then draw the slash in it,
+                // so the two never blur together at menu bar size.
                 let p = NSBezierPath()
-                p.move(to: NSPoint(x: 2, y: 16)); p.line(to: NSPoint(x: 16, y: 2))
-                p.lineWidth = 2; p.lineCapStyle = .round
+                p.move(to: NSPoint(x: 2.5, y: 16.5)); p.line(to: NSPoint(x: 15.5, y: 1.5))
+                p.lineCapStyle = .round
+                NSGraphicsContext.current?.compositingOperation = .clear
+                p.lineWidth = 4.5; p.stroke()
+                NSGraphicsContext.current?.compositingOperation = .sourceOver
+                p.lineWidth = 1.75
                 NSColor.black.setStroke(); p.stroke()
             }
             return true
         }
         img.isTemplate = true
-        img.accessibilityDescription = "Desktop Buddy"
+        img.accessibilityDescription = description(paused: paused)
         cache[paused] = img
         return img
     }
+
+    /// What VoiceOver says for the icon.
+    static func description(paused: Bool) -> String { paused ? "Desktop Buddy, paused" : "Desktop Buddy" }
 
     /// The number next to the mark: what's waiting, or nothing when paused or empty.
     static func title(count: Int, paused: Bool) -> String {
